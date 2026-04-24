@@ -1,0 +1,68 @@
+// OTLP ingestion (OpenClaw → OTLP/HTTP or OTLP/gRPC → Alloy).
+// Metrics are converted to Prometheus format and remote-written to local Prometheus.
+
+otelcol.receiver.otlp "openclaw" {
+	grpc {
+		endpoint = "0.0.0.0:4317"
+	}
+
+	http {
+		endpoint = "0.0.0.0:4318"
+	}
+
+	output {
+		metrics = [otelcol.processor.batch.metrics.input]
+		logs    = [otelcol.processor.batch.logs.input]
+		traces  = [otelcol.processor.batch.traces.input]
+	}
+}
+
+otelcol.processor.batch "metrics" {
+	output {
+		metrics = [otelcol.exporter.prometheus.openclaw.input]
+	}
+}
+
+otelcol.processor.batch "logs" {
+  output {
+    logs = [otelcol.exporter.loki.openclaw.input]
+  }
+}
+
+otelcol.processor.batch "traces" {
+	output {
+		traces = [otelcol.exporter.otlp.tempo.input]
+	}
+}
+
+otelcol.exporter.prometheus "openclaw" {
+	forward_to = [prometheus.remote_write.local.receiver]
+
+	include_target_info = true
+}
+
+otelcol.exporter.loki "openclaw" {
+  forward_to = [loki.write.local.receiver]
+}
+
+otelcol.exporter.otlp "tempo" {
+	client {
+		endpoint = "tempo:4317"
+		tls {
+			insecure             = true
+			insecure_skip_verify = true
+		}
+	}
+}
+
+prometheus.remote_write "local" {
+	endpoint {
+		url = "http://prometheus:9090/api/v1/write"
+	}
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
